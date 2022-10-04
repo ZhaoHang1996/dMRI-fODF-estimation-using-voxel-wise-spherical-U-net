@@ -1,11 +1,117 @@
+import os
+import time
 import scipy.io as sio 
 import numpy as np
 import torch
-from torch.utils.data import Dataset
+import torch.nn as nn
+from torch.utils.data import Dataset, DataLoader
+from tensorboardX import SummaryWriter
 
 
 neigh_id_path = r"C:\Users\31758\Desktop\SphericalUNetPackage-main\sphericalunet\utils\neigh_indices\adj_mat_order_"
 # neigh_id_path = "/data/zh/EXP_save/sunet/neigh_indices/adj_mat_order_"
+
+objectName = {
+0:599671,
+1:601127,
+2:613538,
+3:620434,
+4:622236,
+5:623844,
+6:627549,
+7:638049,
+8:644044,
+9:645551,
+10:654754,
+11:665254,
+12:672756,
+13:673455,
+14:677968}
+
+class ModelBase(object):
+    def __init__(self, network, device, batchSize, savePath):
+        
+        print("\n=================== Start Running ===================\n")
+        self.network = network
+        self.device = device
+        self.batchSize = batchSize
+        self.savePath = savePath
+        
+        self.network.to(self.device)
+        
+        print(f"Using device: {self.device}")
+
+
+    def dataPathSetting(self):
+        
+        '''
+        
+        TO BE SET
+        
+        '''
+
+    def lossFunctionSetting(self, **lossfunctions):
+        
+        print(f"Loss Functions Used are:\n {lossfunctions}")
+        
+        self.loss = LossFunctionsManager(**lossfunctions)
+        self.loss.writer = SummaryWriter(self.savePath)
+
+    def saveInit(self):
+        
+        '''
+        
+        TO BE SET
+        
+        '''
+        
+    def savePred(self):
+        
+        '''
+        
+        TO BE SET
+        
+        '''
+    
+    def training(self, totalEpochs, optimizer, trainNumber, saveTempPara=False, paraLoadPath=None):
+        
+        print("\n=================== Start Training ===================\n")
+        print(f"We use object {trainNumber} to train.")
+    
+        if paraLoadPath is not None:
+            self.network.load_state_dict(torch.load(paraLoadPath))
+            print(f"Get the preTrained parameters: {paraLoadPath}")
+
+        self.network.train()
+        
+        '''
+        
+        TO BE SET
+        self.dataManager.loadData(trainNumber)
+        '''
+        self.dataManager.loadData(trainNumber)
+        
+        
+
+
+
+class LossFunctionsManager(object):
+    
+    def __init__(self, **lossfunctions):
+        
+        self.functions = lossfunctions
+        self._writer = None
+    
+    @property
+    def writer(self): return self._writer
+    @writer.setter
+    def writer(self, wtr): self._writer = wtr
+    
+    
+
+
+
+
 
 class Database(Dataset):
     def __init__(self, indata, label):
