@@ -1,5 +1,4 @@
 import pyvista
-import nibabel as nib
 import numpy as np
 import os
 
@@ -9,7 +8,16 @@ Icos = ['Ico_sub0_12',
         'Ico_sub3_642',
         'Ico_sub4_2562',
         'Ico_sub5_10242',
-        'Ico_sub6_40962',]
+        'Ico_sub6_40962']
+'''
+We don't need so much sampling points to reconstruct a ODF which has more simple
+space structure than a brain cortical surface. Then Ico_sub5 and Ico_sub6 are not
+get used.
+'''
+
+
+
+
 
 objectName = {
 0:599671,

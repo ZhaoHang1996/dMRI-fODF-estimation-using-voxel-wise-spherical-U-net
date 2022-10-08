@@ -1,9 +1,9 @@
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
-import pyvista
+import argparse
 from SunetBase import Database, ModelBase
-from SunetNetBase import Unet_10k
+from SunetNetBase import Unet_sub4
 
 
 class mySunetModel(ModelBase):
@@ -12,44 +12,47 @@ class mySunetModel(ModelBase):
         
     def running(self, batchData):
         
-        self.inputsData = batchData
+        self.inputsData = batchData['indata']
+        
+        self.outSHC = self.network(self.inputsData)
+        
+        self.loss.valueCounting({'SHCloss': (self.outSHC, batchData['SHClabel'].float())})
+        
+        
 
 
 def main():
     
-    # device = torch.device("cpu")
+    parser = argparse.ArgumentParser(description="device and epoch setting.")
     
-    network = Unet_10k(1,1)
+    parser.add_argument('--device', '-d', default='cuda:0')
+    parser.add_argument('--totalEpochs', '-e', default=200)
+    
+    args = parser.parse_args()
+    
+    device = torch.device(args.device if torch.cuda.is_available() else "cpu")
+    
+    network = Unet_sub4(1,1)
 
     optimizer = torch.optim.Adam(network.parameters(), lr=1e-4)
     
-    criterion = nn.MSELoss()
+    model = mySunetModel(network = network,
+                         device = device,
+                         batchSize = 1,
+                         savePath = "/data/zh/EXP_save/sunet/",
+                         task = ['SHC'])
     
-    network.train()
+    model.dataPathSetting(indata= '/data/zh/path/hcp_dODF_b1000_60_Lmax8_SphVal_Ico_sub4_2562_withEro3mask_flatten_path.txt',
+                          SHClabel= '/data/zh/path/hcp_mcsd_FOD_wm_0123_SphVal_Ico_sub4_2562_withEro3mask_flatten_path.txt')
     
-    trainData = (loadOdf(),loadOdf())
-
-    trainLoader = DataLoader(Database(*trainData),
-                             batch_size = 1)
+    model.lossFunctionSetting(SHCloss=nn.MSELoss(reduction='sum'))
     
-    for i, data in enumerate(trainLoader):
-        
-        indata, target = data
- 
-        indata = indata.squeeze().float()
-        target = target.squeeze().float()
-        indata.requires_grad_()
-
-        optimizer.zero_grad()
-
-        
-        prediction = network(indata)
-        
-        loss = criterion(prediction, target)
-
-        loss.backward()
-
-        optimizer.step()
+    model.training(totalEpochs = int(args.totalEpochs),
+                   optimizer = optimizer,
+                   trainNumber = [0])
+    
+    model.testing(testNumber=[0])
+    
     
     
 if __name__ == '__main__':
