@@ -30,7 +30,7 @@ objectName = {
 14:677968}
 
 class ModelBase(object):
-    def __init__(self, network, device, batchSize, savePath, task=None):
+    def __init__(self, network, device, batchSize, savePath):
         
         print("\n=================== Start Running ===================\n")
         self.network = network
@@ -41,9 +41,6 @@ class ModelBase(object):
             savePath += "/"
         self.savePath = savePath
         
-        assert (task is not None), "Model Prediction Task Is Not Setting Yet~! "
-        self.task = task
-        
         
         with open("/data/zh/path/Ero3maskpath.txt") as f:
             maskPath = f.readlines()
@@ -52,7 +49,7 @@ class ModelBase(object):
         self.network.to(self.device)
         
         print(f"Using device: {self.device}")
-
+        print(f"Using batchSize: {self.batchSize}")
 
     def dataPathSetting(self, **pathFile):
         
@@ -65,33 +62,24 @@ class ModelBase(object):
         self.loss = LossFunctionsManager(**lossfunctions)
         self.loss.writer = SummaryWriter(self.savePath)
 
-    def saveInit(self):
         
-        self.outputSaveBag = {}
+    def savePred(self, outdata):
         
-        if 'SHC' in self.task: self.outputSaveBag['SHC'] = np.zeros(self.testDataLength, 45)
-        
-        if 'PKS' in self.task: self.outputSaveBag['PKS'] = np.zeros(self.testDataLength, 3, 3)
-        
-        
-    def savePred(self):
-        
-        startPoint = self.saveCounter
-        
-        if 'SHC' in self.task:
-            self.outputSaveBag['SHC'][startPoint:startPoint+self.inputsData.shape[0]] = self.outSHC.cpu().detach().numpy()
+        for dataname in outdata:
             
-        if 'PKS' in self.task:
-            self.outputSaveBag['PKS'][startPoint:startPoint+self.inputsData.shape[0], 0, :] = self.outPKS1.cpu().detach().numpy()
-            self.outputSaveBag['PKS'][startPoint:startPoint+self.inputsData.shape[0], 1, :] = self.outPKS2.cpu().detach().numpy()
-            self.outputSaveBag['PKS'][startPoint:startPoint+self.inputsData.shape[0], 2, :] = self.outPKS3.cpu().detach().numpy()
+            if dataname in self.outputSaveBag:
+                
+                self.outputSaveBag[dataname].append(outdata[dataname].cpu().detach().numpy())
+        
+            else:
+                
+                self.outputSaveBag[dataname] = [outdata[dataname].cpu().detach().numpy()]
             
-        self.saveCounter += self.inputsData.shape[0]
     
     def training(self, totalEpochs, optimizer, trainNumber, saveTempPara=False, paraLoadPath=None):
         
         print("\n=================== Start Training ===================\n")
-        print(f"We use object {trainNumber} to train.")
+        print(f"We use object {trainNumber} to train {totalEpochs} epochs.")
     
         if paraLoadPath is not None:
             self.network.load_state_dict(torch.load(paraLoadPath))
@@ -119,18 +107,19 @@ class ModelBase(object):
                 
                 for i,data in enumerate(trainLoader):
                     
-                    batchData = self.dataManager.readLoader(data)
+                    self.batchData = self.dataManager.readLoader(data)
                     
-                    for name in batchData: 
-                        batchData[name] = batchData[name].to(self.device)
+                    for name in self.batchData: 
+                        self.batchData[name] = self.batchData[name].to(self.device)
             
-                    batchData['indata'] = batchData['indata'].float()
+                    self.batchData['indata'] = self.batchData['indata'].float()
                     
-                    batchData['indata'].requires_grad_()
-                    
+                    self.batchData['indata'].requires_grad_()
+                    self.batchData['outdata'] = {}
+                                 
                     optimizer.zero_grad()
                     
-                    self.running(batchData)
+                    self.running()
                     
                     self.loss.lossBackward()
                     
@@ -149,7 +138,7 @@ class ModelBase(object):
             self.latestParaPath = self.savePath + "parameterEpoch" + str(epoch) + ".pkl"
             torch.save(self.network.state_dict(), self.latestParaPath)
 
-            print("Epoch %d cost %.2f s" % epoch, cost_time)
+            print("Epoch %d cost %.2f s" % (epoch, cost_time))
             self.loss.valueShow()
             print("\n")
             
@@ -167,55 +156,52 @@ class ModelBase(object):
         self.network.eval()
         
         self.dataManager.loadData(testNumber)
-        
-        for x, obj in enumerate(testNumber):
+        with torch.no_grad(): 
+            for x, obj in enumerate(testNumber):
             
-            print(f"\n========= {objectName[obj]} in Testing =========\n")
+                print(f"\n========= {objectName[obj]} in Testing =========\n")
         
-            testData = self.dataManager.readData_order(x)
+                testData = self.dataManager.readData_order(x)
         
-            testLoader = DataLoader(Database(*testData),
+                testLoader = DataLoader(Database(*testData),
                                     batch_size=self.batchSize,
                                     shuffle = False)
             
-            self.testDataLength = len(testLoader.dataset)
+
             
-            mask = nib.load(self.maskPath[obj])
-            affine = mask.affine
-            self.mask = mask.get_fdata()
+                mask = nib.load(self.maskPath[obj])
+                affine = mask.affine
+                self.mask = mask.get_fdata()
             
-            self.saveCounter = 0
-            self.saveInit()
+                self.outputSaveBag = {}
             
+                self.loss.valueInit()
             
+                start_time = time.time()
             
-            self.loss.valueInit()
-            
-            start_time = time.time()
-            
-            for i, data in enumerate(testLoader):
+                for i, data in enumerate(testLoader):
                 
-                batchData = self.dataManager.readLoader(data)
-                for name in batchData: 
-                    batchData[name] = batchData[name].to(self.device)
+                    self.batchData = self.dataManager.readLoader(data)
+                    for name in self.batchData: 
+                        self.batchData[name] = self.batchData[name].to(self.device)
                 
-                batchData['indata'] = batchData['indata'].float()
+                    self.batchData['indata'] = self.batchData['indata'].float()
+                    self.batchData['outdata'] = {}
                 
-                self.running(batchData)
                 
-                self.savePred()
+                    self.running()
                 
-            assert (self.saveCounter == self.testDataLength)
+                    self.savePred(self.batchData['outdata'])
             
-            self.loss.valueShow()
-            cost_time = time.time() - start_time
+                self.loss.valueShow()
+                cost_time = time.time() - start_time
             
-            print("Test time cost %.2f s" % cost_time)
+                print("Test time cost %.2f s" % cost_time)
             
-            self.postManager = DataPostProcessing(self.outputSaveBag, self.mask, obj, self.savePath, affine)
-            self.postManager.stretchBack()
-            self.postManager.showEval()
-            self.postManager.save()
+                self.postManager = DataPostProcessing(self.outputSaveBag, self.mask, obj, self.savePath, affine)
+                self.postManager.stretchBack()
+                # self.postManager.showEval()
+
                 
     def running(self):
         raise Exception("The running process needs to be done in sub-class~!")
@@ -244,7 +230,7 @@ class LossFunctionsManager(object):
     def valueAveraged(self, denominator):
         
         for lossname in self.value:
-            self.value /= denominator
+            self.value[lossname] /= denominator
             
     def valueCounting(self, lossParas):
         
@@ -262,7 +248,7 @@ class LossFunctionsManager(object):
             
     def valueShow(self):
         for lossname in self.value:
-            print("{}: {:3f}".format(lossname, self.value[lossname]), end="  ")
+            print("%s : %.3f" % (lossname, self.value[lossname]), end="  ")
             
     def lossBackward(self):
         
@@ -311,10 +297,9 @@ class DataManager(object):
         assert (len(batchData)==len(self.dataBag))
         
         tempBag = {}
-        counter = 0
-        for dataname in self.dataBag:
-            tempBag[dataname] = batchData[counter]
-            counter += 1
+
+        for i, dataname in enumerate(self.dataBag):
+            tempBag[dataname] = batchData[i]
             
         return tempBag
 
@@ -322,7 +307,10 @@ class DataPostProcessing(object):
     def __init__(self, vectorBag, mask, obj, savePath, affine):
         
         self.vectorBag = vectorBag
-        self.mask = mask 
+        self.mask = mask
+        
+        self.totalNumber = int(self.mask.sum())
+        
         self.objname = str(objectName[obj])
         
         self.savePath = savePath
@@ -330,59 +318,64 @@ class DataPostProcessing(object):
         
     def stretchBack(self):
         
-        self.cubeBag = {}
-        for dataName in self.vectorBag:
-            self.cubeBag[dataName] = np.zeros((self.mask.shape)+(self.vectorBag[dataName].shape[3:]))
+        for dataname in self.vectorBag:
+            
+            vectorData = np.concatenate(self.vectorBag[dataname], axis=0)
+            
+            assert len(vectorData)==self.totalNumber, f"Expect {self.totalNumber} data but got {len(vectorData)}"
         
-        counter = 0
+            cubeData = np.zeros(self.mask.shape + vectorData.shape[1:])
         
-        for x in range(self.mask.shape[0]):
-            for y in range(self.mask.shape[1]):
-                for z in range(self.mask.shape[2]):
-                    
-                    if self.mask[x,y,z]:
+            counter = 0
+            for x in range(self.mask.shape[0]):
+                for y in range(self.mask.shape[1]):
+                    for z in range(self.mask.shape[2]):
                         
-                        for dataName in self.vectorBag:
+                        if self.mask[x,y,z]:
+                                
+                            cubeData[x,y,z] = vectorData[counter]
                             
-                            self.cubeBag['SHC'][x,y,z] = self.vectorBag['SHC'][counter]
-                        
-                        counter += 1
-                        
-    def save(self): 
-        
-        for dataName in self.cubeBag:
+                            counter += 1
             
-            if (self.cubeBag[dataName].shape) > 4:
-                self.cubeBag[dataName] = self.cubeBag[dataName].reshape(self.cubeBag[dataName].shape[:3] + (-1,))
-            
-            sp = self.savePath + self.objname + "_" + str(dataName) + "_pred.nii.gz"
-            
-            nib.save(nib.Nifti1Image(self.cubeBag[dataName], self.affine), sp)
+            assert counter==self.totalNumber, f"Expect {self.totalNumber} data but got {counter}"
+    
+            self.save(dataname, cubeData)
+    
         
     def showEval(self):
+        pass
+              
         
-        if 'SHC' in self.cubeBag:
+        # if 'SHC' in self.cubeBag:
             
-            SHC_GT = nib.load("/data/zh/hcp_mcsdResult_0123_MRtrix3/FOD/" + self.objname + "_mcsd_FOD_wm_0123.nii.gz").get_fdata()
+        #     SHC_GT = nib.load("/data/zh/hcp_mcsdResult_0123_MRtrix3/FOD/" + self.objname + "_mcsd_FOD_wm_0123.nii.gz").get_fdata()
         
-            acc, badPoint = ACC(self.cubeBag['SHC'], SHC_GT, mask=self.mask)
+        #     acc, badPoint = ACC(self.cubeBag['SHC'], SHC_GT, mask=self.mask)
 
-            avg_acc = acc.sum() / (self.mask.sum() - badPoint)
+        #     avg_acc = acc.sum() / (self.totalNumber - badPoint)
 
-            print("Mean ACC: %.3f" % avg_acc)
+        #     print("Mean ACC: %.3f" % avg_acc)
 
-            self.cubeBag['ACC'] = acc
+        #     self.cubeBag['ACC'] = acc
 
 
-        if 'PKS' in self.cubeBag:
-            pass
+        # if 'PKS' in self.cubeBag:
+        #     pass
             # /data/zh/hcp_mcsdResult_0123_MRtrix3/peaks/599671_mcsd_peaks_0123_MRtrix3.nii.gz
 
-
-
-
+    def save(self, dataname, data): 
         
+        if ((len(data.shape) == 4) or (len(data.shape) == 3)):
+            
+            sp = self.savePath + self.objname + "_" + str(dataname) + "_pred.nii.gz"
+            nib.save(nib.Nifti1Image(data, self.affine), sp)
 
+        else:
+            
+            sp = self.savePath + self.objname + "_" + str(dataname) + "_pred.npy"
+            np.save(sp, data)
+        
+        print(f"{dataname} saved in {sp}")
 
 class Database(Dataset):
     def __init__(self, *datas):

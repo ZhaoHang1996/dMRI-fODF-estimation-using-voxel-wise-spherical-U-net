@@ -1,22 +1,21 @@
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader
 import argparse
-from SunetBase import Database, ModelBase
-from SunetNetBase import Unet_sub4
+from SunetBase import ModelBase
+from SunetNetBase import Unet_sub3
 
 
 class mySunetModel(ModelBase):
     def __init__(self, *args, **kwargs):
         super(mySunetModel, self).__init__(*args, **kwargs)
         
-    def running(self, batchData):
+    def running(self):
         
-        self.inputsData = batchData['indata']
+        inputsData = self.batchData['indata']
         
-        self.outSHC = self.network(self.inputsData)
+        self.batchData['outdata']['fODFonSphSub3'] = self.network(inputsData).squeeze()
         
-        self.loss.valueCounting({'SHCloss': (self.outSHC, batchData['SHClabel'].float())})
+        self.loss.valueCounting({'fODFonSphloss': (self.batchData['outdata']['fODFonSphSub3'], self.batchData['fODFonSphlabel'].float())})
         
         
 
@@ -32,26 +31,25 @@ def main():
     
     device = torch.device(args.device if torch.cuda.is_available() else "cpu")
     
-    network = Unet_sub4(1,1)
+    network = Unet_sub3(1,1)
 
     optimizer = torch.optim.Adam(network.parameters(), lr=1e-4)
     
     model = mySunetModel(network = network,
                          device = device,
-                         batchSize = 1,
-                         savePath = "/data/zh/EXP_save/sunet/",
-                         task = ['SHC'])
+                         batchSize = 480,
+                         savePath = "/data/zh/EXP_save/sunet/")
     
-    model.dataPathSetting(indata= '/data/zh/path/hcp_dODF_b1000_60_Lmax8_SphVal_Ico_sub4_2562_withEro3mask_flatten_path.txt',
-                          SHClabel= '/data/zh/path/hcp_mcsd_FOD_wm_0123_SphVal_Ico_sub4_2562_withEro3mask_flatten_path.txt')
+    model.dataPathSetting(indata= '/data/zh/path/hcp_dODF_b1000_60_Lmax8_SphVal_Ico_sub3_642_withEro3mask_flatten_path.txt',
+                          fODFonSphlabel= '/data/zh/path/hcp_mcsd_FOD_wm_0123_SphVal_Ico_sub3_642_withEro3mask_flatten_path.txt')
     
-    model.lossFunctionSetting(SHCloss=nn.MSELoss(reduction='sum'))
+    model.lossFunctionSetting(fODFonSphloss=nn.MSELoss(reduction='sum'))
     
     model.training(totalEpochs = int(args.totalEpochs),
                    optimizer = optimizer,
-                   trainNumber = [0])
+                   trainNumber = [0,2,4,6])
     
-    model.testing(testNumber=[0])
+    model.testing(testNumber=[3,5])
     
     
     
