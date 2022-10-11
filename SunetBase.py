@@ -199,13 +199,32 @@ class ModelBase(object):
                 print("Test time cost %.2f s" % cost_time)
             
                 self.postManager = DataPostProcessing(self.outputSaveBag, self.mask, obj, self.savePath, affine)
-                self.postManager.stretchBack()
-                # self.postManager.showEval()
+                self.cubeData = self.postManager.stretchBack()
+                self.evaluation()
+                 
 
                 
     def running(self):
+        """
+        get your input data from self.batchData['indata']
+        
+        return your output data to self.batchData['outdata'] (dict) with form self.batchData['outdata'][dataname] = data
+        """
         raise Exception("The running process needs to be done in sub-class~!")
         
+    def evaluation(self):
+        """
+        Evaluation process is differ with various model, so do it in subclas.
+        
+        get your cube data from self.cubeData (dict) with form data = self.cubeData[dataname]
+        
+        get your object information from self.postManager
+        
+        do the saving process with self.postManager.save(dataname, data) (savepath will be return)
+        
+        """
+        raise Exception("The evaluation process needs to be done in sub-class~!")
+
 
 class LossFunctionsManager(object):
     
@@ -318,13 +337,15 @@ class DataPostProcessing(object):
         
     def stretchBack(self):
         
+        cubeBag = {}
+        
         for dataname in self.vectorBag:
             
             vectorData = np.concatenate(self.vectorBag[dataname], axis=0)
             
             assert len(vectorData)==self.totalNumber, f"Expect {self.totalNumber} data but got {len(vectorData)}"
         
-            cubeData = np.zeros(self.mask.shape + vectorData.shape[1:])
+            cubeBag[dataname] = np.zeros(self.mask.shape + vectorData.shape[1:])
         
             counter = 0
             for x in range(self.mask.shape[0]):
@@ -333,35 +354,16 @@ class DataPostProcessing(object):
                         
                         if self.mask[x,y,z]:
                                 
-                            cubeData[x,y,z] = vectorData[counter]
+                            cubeBag[dataname][x,y,z] = vectorData[counter]
                             
                             counter += 1
             
             assert counter==self.totalNumber, f"Expect {self.totalNumber} data but got {counter}"
     
-            self.save(dataname, cubeData)
+            # self.save(dataname, cubeData)
     
-        
-    def showEval(self):
-        pass
-              
-        
-        # if 'SHC' in self.cubeBag:
-            
-        #     SHC_GT = nib.load("/data/zh/hcp_mcsdResult_0123_MRtrix3/FOD/" + self.objname + "_mcsd_FOD_wm_0123.nii.gz").get_fdata()
-        
-        #     acc, badPoint = ACC(self.cubeBag['SHC'], SHC_GT, mask=self.mask)
-
-        #     avg_acc = acc.sum() / (self.totalNumber - badPoint)
-
-        #     print("Mean ACC: %.3f" % avg_acc)
-
-        #     self.cubeBag['ACC'] = acc
-
-
-        # if 'PKS' in self.cubeBag:
-        #     pass
-            # /data/zh/hcp_mcsdResult_0123_MRtrix3/peaks/599671_mcsd_peaks_0123_MRtrix3.nii.gz
+        return cubeBag    
+    
 
     def save(self, dataname, data): 
         
@@ -376,6 +378,9 @@ class DataPostProcessing(object):
             np.save(sp, data)
         
         print(f"{dataname} saved in {sp}")
+
+        return sp
+
 
 class Database(Dataset):
     def __init__(self, *datas):

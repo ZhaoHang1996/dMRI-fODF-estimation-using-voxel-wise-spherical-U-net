@@ -1,7 +1,9 @@
 import torch
 import torch.nn as nn
 import argparse
-from SunetBase import ModelBase
+import os
+import nibabel as nib
+from SunetBase import ModelBase, ACC
 from SunetNetBase import Unet_sub3
 
 
@@ -17,7 +19,35 @@ class mySunetModel(ModelBase):
         
         self.loss.valueCounting({'fODFonSphloss': (self.batchData['outdata']['fODFonSphSub3'], self.batchData['fODFonSphlabel'].float())})
         
+    def evaluation(self):
         
+        fODF = self.cubeData['fODFonSphSub3']
+
+        fODFpath = self.postManager.save('fODFonSphSub3', fODF)
+
+        SHpath = str(self.savePath + self.postManager.objname + "_fODF_SHC_pred.nii.gz")
+
+        directionPath = "/data/zh/hcp_ODF_SphericalValues_Icosahedron/Ico_sub3_642_vertices.txt"
+
+        com = f"amp2sh -quiet -lmax 8 -directions {directionPath} {fODFpath} {SHpath}"
+        
+        os.system(com)
+      
+        SHC_GT_path = "/data/zh/hcp_mcsdResult_0123_MRtrix3/FOD/" + self.postManager.objname + "_mcsd_FOD_wm_0123.nii.gz"
+        SHC_GT = nib.load(SHC_GT_path).get_fdata()
+        
+        
+        acc, badPoint = ACC(nib.load(SHpath).get_fdata(), SHC_GT, mask = self.postManager.mask)
+        
+        avg_acc = acc.sum() / (self.postManager.totalNumber - badPoint)
+
+        print("Mean ACC: %.3f" % avg_acc)
+        
+        self.postManager.save('ACC', acc)
+
+
+
+
 
 
 def main():
